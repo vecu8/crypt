@@ -1,42 +1,5 @@
 
 
-
-
-
-Crypt Tool Documentation
-
- body {
- font-family: Arial, sans-serif;
- margin: 20px;
- }
- code {
- background-color: #f4f4f4;
- padding: 2px 4px;
- font-size: 90%;
- color: #c7254e;
- }
- pre {
- background-color: #f4f4f4;
- padding: 10px;
- overflow-x: auto;
- }
- h1, h2, h3, h4 {
- color: #333;
- }
- .command {
- margin-bottom: 30px;
- }
- ul {
- line-height: 1.6;
- }
- .details {
- margin-left: 20px;
- font-size: 90%;
- color: #555;
- }
- 
-
-
 Crypt Tool Documentation
 ========================
 
