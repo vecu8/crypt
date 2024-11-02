@@ -38,7 +38,9 @@
 <body>
     <h1>Crypt Tool Documentation</h1>
 
-    <p>The <code>crypt</code> tool is a versatile command-line application that provides various cryptographic functionalities, including key generation, XOR encryption/decryption, byte scrambling, and secure file erasure. It incorporates memory safety features to securely handle sensitive data.</p>
+    <p>The <code>crypt</code> tool is a versatile command-line application that provides various cryptographic functionalities, including key generation, XOR encryption/decryption, byte scrambling, secure file erasure, and file analysis. It incorporates memory safety features to securely handle sensitive data.</p>
+
+    <p><strong>Note on One-Time Pad (OTP) Encryption:</strong> The tool's XOR encryption function can be used to implement a form of One-Time Pad encryption when the key is truly random, at least as long as the message, kept secret, and never reused. OTP is theoretically unbreakable when these conditions are met. However, practical implementation requires careful management of key material.</p>
 
     <h2>Available Commands</h2>
     <p>The tool provides the following commands:</p>
@@ -47,6 +49,7 @@
         <li><code>xor</code>: Perform XOR encryption or decryption on files.</li>
         <li><code>scramble</code>: Randomly shuffle the bytes of a file.</li>
         <li><code>erase</code>: Securely erase files by overwriting them with random data.</li>
+        <li><code>scan</code>: Analyze a file's byte frequencies and calculate entropy.</li>
     </ul>
 
     <div class="command">
@@ -101,6 +104,7 @@ crypt keygen 20mb --output-file deterministic_key.key --mode deterministic --pas
         </ul>
         <h3>How It Works:</h3>
         <p>The tool reads the input file and the key file into memory. It then performs a byte-wise XOR operation between the input data and the key data. The result is written to the output file. XOR encryption is symmetric, so performing the operation twice with the same key will return the original data.</p>
+        <p><strong>One-Time Pad (OTP) Implementation:</strong> When the key file is truly random, at least as long as the input file, kept secret, and never reused, this method implements a One-Time Pad encryption. OTP is considered unbreakable when used correctly. However, managing such keys securely is challenging in practice.</p>
         <h3>Memory Safety:</h3>
         <ul>
             <li>After the operation, the input data, key data, and processed data are securely zeroed out from memory using the <code>zeroize</code> crate.</li>
@@ -171,6 +175,30 @@ crypt erase sensitive_data.txt
 crypt erase sensitive_data.txt --passes 3</code></pre>
     </div>
 
+    <div class="command">
+        <h2>5. <code>scan</code> Command</h2>
+        <p><strong>Purpose:</strong> Analyze a file's byte frequencies and calculate its Shannon entropy.</p>
+        <h3>Usage:</h3>
+        <pre><code>crypt scan &lt;input_file&gt; [--output-file &lt;report_file&gt;]</code></pre>
+        <h3>Arguments:</h3>
+        <ul>
+            <li><code>&lt;input_file&gt;</code>: The path to the file you want to analyze.</li>
+            <li><code>--output-file &lt;report_file&gt;</code> (optional): The path where the analysis report will be saved. Defaults to <code>report.txt</code> if not specified.</li>
+        </ul>
+        <h3>How It Works:</h3>
+        <p>The tool reads the entire input file and counts the frequency of each possible byte value (0-255). It then calculates the Shannon entropy of the data, which is a measure of randomness or unpredictability. The results, including byte frequencies and entropy, are written to the specified report file.</p>
+        <h3>Memory Safety:</h3>
+        <ul>
+            <li>The data buffer containing the file's contents is securely zeroed out using the <code>zeroize</code> crate after analysis to prevent any residual data from remaining in memory.</li>
+        </ul>
+        <h3>Examples:</h3>
+        <pre><code># Analyze a file and save the report to 'report.txt'
+crypt scan input_file.txt
+
+# Analyze a file and specify a custom report file
+crypt scan input_file.txt --output-file analysis_report.txt</code></pre>
+    </div>
+
     <h2>Detailed Explanations and Memory Safety</h2>
     <h3>Key Generation (<code>keygen</code>)</h3>
     <p>The key generation process involves creating cryptographic keys that can be used for encryption, decryption, or other cryptographic operations. The tool supports two modes:</p>
@@ -186,6 +214,7 @@ crypt erase sensitive_data.txt --passes 3</code></pre>
 
     <h3>XOR Encryption/Decryption (<code>xor</code>)</h3>
     <p>The XOR operation is a simple yet effective method for encrypting and decrypting data. It works by applying the XOR logical operation between each byte of the input data and the corresponding byte of the key data.</p>
+    <p><strong>One-Time Pad (OTP) Implementation:</strong> When the key is truly random, as long as the input file, kept secret, and never reused, the XOR operation effectively implements a One-Time Pad encryption. OTP is considered theoretically unbreakable under these conditions. However, in practice, securely generating, distributing, and managing such large keys can be challenging.</p>
     <p><strong>Memory Safety Measures:</strong></p>
     <ul>
         <li>The input data, key data, and processed (encrypted/decrypted) data are all loaded into memory for the operation.</li>
@@ -210,6 +239,13 @@ crypt erase sensitive_data.txt --passes 3</code></pre>
     </ul>
     <p><strong>Important Note:</strong> Due to the nature of modern storage devices like SSDs, which use wear leveling, data might not be completely overwritten. For highly sensitive data, consider additional measures such as physical destruction.</p>
 
+    <h3>File Analysis (<code>scan</code>)</h3>
+    <p>The scan command allows users to analyze a file's byte distribution and entropy. This can be useful for assessing the randomness of data, verifying the effectiveness of encryption, or identifying patterns.</p>
+    <p><strong>Memory Safety Measures:</strong></p>
+    <ul>
+        <li>The data buffer containing the file's contents is securely zeroed out after analysis using the <code>zeroize</code> crate.</li>
+    </ul>
+
     <h2>General Notes</h2>
     <ul>
         <li>All commands check for existing output files to prevent accidental overwriting unless explicitly specified (e.g., using the <code>--overwrite</code> flag).</li>
@@ -222,7 +258,8 @@ crypt erase sensitive_data.txt --passes 3</code></pre>
     <h2>Security Considerations</h2>
     <p>While the <code>crypt</code> tool incorporates several security measures, it's important to understand its limitations:</p>
     <ul>
-        <li><strong>XOR Encryption:</strong> XOR encryption is not secure against modern cryptographic attacks, especially if the key is reused or predictable. It should not be used for encrypting highly sensitive data.</li>
+        <li><strong>XOR Encryption:</strong> XOR encryption is not secure against modern cryptographic attacks, especially if the key is reused or predictable. It should not be used for encrypting highly sensitive data unless implemented as a proper One-Time Pad.</li>
+        <li><strong>One-Time Pad Limitations:</strong> Implementing OTP securely requires truly random keys that are as long as the message, securely shared, and never reused. Managing such keys is often impractical for large amounts of data.</li>
         <li><strong>Byte Scrambling:</strong> Scrambling bytes does not securely protect data. It only obfuscates the data superficially.</li>
         <li><strong>Secure Erasure:</strong> Due to hardware-level optimizations in storage devices, secure file erasure may not guarantee that data is unrecoverable. For highly sensitive data, consider using specialized tools or methods.</li>
     </ul>

@@ -1,5 +1,5 @@
 use std::fs::{metadata, File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use aes::Aes256;
@@ -11,6 +11,8 @@ use rand::{rngs::OsRng, thread_rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use zeroize::Zeroize;
 
+/// A versatile crypto tool for key generation, XOR encryption/decryption, byte scrambling,
+/// secure file erasure, and file analysis.
 #[derive(Parser)]
 #[command(
     disable_help_flag = true,
@@ -49,6 +51,11 @@ enum Commands {
         #[arg(long, default_value = "1")]
         passes: usize,
     },
+    Scan {
+        input_file: String,
+        #[arg(long)]
+        output_file: Option<String>,
+    },
 }
 
 fn main() -> io::Result<()> {
@@ -80,6 +87,12 @@ fn main() -> io::Result<()> {
             }
             Commands::Erase { input_file, passes } => {
                 erase(&input_file, passes)?;
+            }
+            Commands::Scan {
+                input_file,
+                output_file,
+            } => {
+                scan(&input_file, output_file.as_deref())?;
             }
         },
         Err(_) => {
@@ -499,6 +512,139 @@ fn erase(input_file: &str, passes: usize) -> io::Result<()> {
     // std::fs::remove_file(input_file)?;
 
     Ok(())
+}
+
+fn scan(input_file: &str, output_file: Option<&str>) -> io::Result<()> {
+    if !Path::new(input_file).exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("File '{}' does not exist.", input_file),
+        ));
+    }
+
+    // Open the file in read-only mode
+    let file = File::open(&input_file).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("Failed to open file '{}': {}", input_file, e),
+        )
+    })?;
+
+    let mut reader = BufReader::new(file);
+    let mut buffer = Vec::new();
+
+    // Read the entire file into the buffer
+    reader.read_to_end(&mut buffer).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Failed to read file '{}': {}", input_file, e),
+        )
+    })?;
+
+    // Initialize a frequency array for all 256 byte values
+    let mut frequencies = [0u64; 256];
+
+    for &byte in &buffer {
+        frequencies[byte as usize] += 1;
+    }
+
+    // Determine the report file name
+    let report_path = if let Some(output_file) = output_file {
+        let path = Path::new(output_file);
+        if path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("Error: Report file '{}' already exists.", output_file),
+            ));
+        }
+        path.to_path_buf()
+    } else {
+        Path::new("report.txt").to_path_buf()
+    };
+
+    // Prepare to write the report
+    let report = File::create(&report_path).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("Failed to create report file '{}': {}", report_path.display(), e),
+        )
+    })?;
+
+    let mut writer = io::BufWriter::new(report);
+
+    // Write the header
+    writeln!(writer, "Binary Character Frequencies:\n").map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::WriteZero,
+            format!("Failed to write to report file '{}': {}", report_path.display(), e),
+        )
+    })?;
+
+    // Write each byte and its count
+    for (byte, &count) in frequencies.iter().enumerate() {
+        // Display byte in hexadecimal for better readability
+        writeln!(writer, "Byte {:02X} ({}): {}", byte, byte, count).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::WriteZero,
+                format!("Failed to write to report file '{}': {}", report_path.display(), e),
+            )
+        })?;
+    }
+
+    // Add a separator
+    writeln!(writer, "\nEntropy and Randomness Analysis:\n").map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::WriteZero,
+            format!("Failed to write to report file '{}': {}", report_path.display(), e),
+        )
+    })?;
+
+    // Calculate entropy
+    let entropy = calculate_entropy(&frequencies, buffer.len() as f64);
+    writeln!(writer, "Shannon Entropy: {:.4} bits per byte", entropy).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::WriteZero,
+            format!("Failed to write to report file '{}': {}", report_path.display(), e),
+        )
+    })?;
+
+    // Additional randomness analysis can be added here
+    // For example, Chi-Square test, Runs test, etc.
+
+    writeln!(
+        writer,
+        "\nInterpretation:\n\
+        - Entropy close to 8 bits per byte indicates high randomness.\n\
+        - Lower entropy suggests patterns or redundancy in the data."
+    )
+    .map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::WriteZero,
+            format!("Failed to write to report file '{}': {}", report_path.display(), e),
+        )
+    })?;
+
+    println!(
+        "Analysis complete. Report saved to '{}'.",
+        report_path.display()
+    );
+
+    // Securely zero the buffer
+    buffer.zeroize();
+
+    Ok(())
+}
+
+/// Calculates the Shannon entropy of the data.
+fn calculate_entropy(frequencies: &[u64; 256], total: f64) -> f64 {
+    frequencies.iter().fold(0.0, |acc, &count| {
+        if count == 0 {
+            acc
+        } else {
+            let p = count as f64 / total;
+            acc - p * p.log2()
+        }
+    })
 }
 
 fn parse_size(size_str: &str) -> Result<usize, String> {
