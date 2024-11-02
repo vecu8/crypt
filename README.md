@@ -1,6 +1,6 @@
 # Crypt Tool Documentation
 
-This is made as a cli app so scrpits can be used for batch processing. 
+Version 001 - This is made as a cli app so scrpits can be used for batch processing. Many more features will be included in future. 
 
 The `crypt` tool is a versatile command-line application that provides various cryptographic functionalities, including key generation, XOR encryption/decryption, byte scrambling, secure file erasure, and file analysis. It incorporates memory safety features to securely handle sensitive data.
 
