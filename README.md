@@ -1,5 +1,7 @@
 # Crypt Tool Documentation
 
+This is made as a cli app so scrpits can be used for batch processing. 
+
 The `crypt` tool is a versatile command-line application that provides various cryptographic functionalities, including key generation, XOR encryption/decryption, byte scrambling, secure file erasure, and file analysis. It incorporates memory safety features to securely handle sensitive data.
 
 **Note on One-Time Pad (OTP) Encryption:** The tool's XOR encryption function can be used to implement a form of One-Time Pad encryption when the key is truly random, at least as long as the message, kept secret, and never reused. OTP is theoretically unbreakable when these conditions are met. However, practical implementation requires careful management of key material.
