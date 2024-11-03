@@ -1,6 +1,6 @@
 # Crypt Tool Documentation
 
-Version 001 - This is made as a cli app so scrpits can be used for batch processing- and to be used in Quantum Computer safe mode- i.e encrypt with aes or chacha20 then encrypt again with this app. Version 001 here is decent- but will see lots of updates in near future. 
+Notes:: Version 001 - This is made as a cli app so scrpits can be used for batch processing- and to be used in Quantum Computer safe mode- i.e encrypt with aes or chacha20 then encrypt again with this app. Version 001 here is decent- but will see lots of updates in near future. No chunk based processing or memory mapping is done- this version assumes you have enough free ram to load the entire key and the entire file into memory. 
 
 The `crypt` tool is a versatile command-line application that provides various cryptographic functionalities, including key generation, XOR encryption/decryption, byte scrambling, secure file erasure, and file analysis. It incorporates memory safety features to securely handle sensitive data.
 
