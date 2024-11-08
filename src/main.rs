@@ -9,9 +9,10 @@ use ctr::cipher::{KeyIvInit, StreamCipher};
 use rand::seq::SliceRandom;
 use rand::{rngs::OsRng, thread_rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
-/// A versatile crypto tool for key generation, XOR encryption/decryption, byte scrambling,
+/// A versatile crypto tool for key generation, byte scrambling,
 /// secure file erasure, and file analysis.
 #[derive(Parser)]
 #[command(
@@ -35,10 +36,12 @@ enum Commands {
         #[arg(long)]
         password: Option<String>,
     },
-    Xor {
-        input_file: String,
+    DeterministicKey {
+        size: String,
+        #[arg(long)]
         output_file: String,
-        key_file: String,
+        #[arg(long)]
+        input_string: String,
     },
     Scramble {
         input_file: String,
@@ -71,12 +74,12 @@ fn main() -> io::Result<()> {
             } => {
                 keygen(size, output_file, mode, password)?;
             }
-            Commands::Xor {
-                input_file,
+            Commands::DeterministicKey {
+                size,
                 output_file,
-                key_file,
+                input_string,
             } => {
-                xor_process(&input_file, &output_file, &key_file)?;
+                deterministic_keygen(size, output_file, input_string)?;
             }
             Commands::Scramble {
                 input_file,
@@ -216,143 +219,59 @@ fn keygen(
     Ok(())
 }
 
-fn xor_process(input_file: &str, output_file: &str, key_file: &str) -> io::Result<()> {
-    let input_path = Path::new(input_file);
-    let output_path = Path::new(output_file);
-    let key_path = Path::new(key_file);
+fn deterministic_keygen(
+    size_arg: String,
+    output_file: String,
+    input_string: String,
+) -> io::Result<()> {
+    // Parse size
+    let size_in_bytes = match parse_size(&size_arg) {
+        Ok(size) => size,
+        Err(err) => {
+            eprintln!("Error parsing size: {}", err);
+            std::process::exit(1);
+        }
+    };
 
-    if output_path.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!("Error: File '{}' already exists.", output_file),
-        ));
+    // Check if output file exists
+    if Path::new(&output_file).exists() {
+        eprintln!("Error: File '{}' already exists.", output_file);
+        std::process::exit(1);
     }
 
-    let mut key_handle = File::open(&key_path).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
-            format!(
-                "Key file '{}' not found or cannot be opened: {}",
-                key_path.display(),
-                e
-            ),
-        )
-    })?;
-    let mut key = Vec::new();
-    key_handle.read_to_end(&mut key).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("Failed to read key file '{}': {}", key_path.display(), e),
-        )
-    })?;
+    // Hash the input string to create a seed
+    let mut hasher = Sha256::new();
+    hasher.update(input_string.as_bytes());
+    let hash = hasher.finalize();
 
-    if key.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "Key file '{}' is empty. Please provide a valid key.",
-                key_path.display()
-            ),
-        ));
+    let seed: [u8; 32] = hash.into();
+
+    let mut rng = ChaCha20Rng::from_seed(seed);
+
+    // Generate key data
+    let buffer_size = 1024 * 1024;
+    let mut buffer = vec![0u8; buffer_size];
+    let mut bytes_written = 0;
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&output_file)?;
+
+    while bytes_written < size_in_bytes {
+        let bytes_to_write = std::cmp::min(buffer_size, size_in_bytes - bytes_written);
+        rng.fill_bytes(&mut buffer[..bytes_to_write]);
+        file.write_all(&buffer[..bytes_to_write])?;
+        bytes_written += bytes_to_write;
     }
 
-    let mut input_handle = File::open(&input_path).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
-            format!(
-                "Unable to open input file '{}': {}",
-                input_path.display(),
-                e
-            ),
-        )
-    })?;
-    let mut input_data = Vec::new();
-    input_handle.read_to_end(&mut input_data).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("Failed to read input file '{}': {}", input_path.display(), e),
-        )
-    })?;
+    // Securely zero the buffer
+    buffer.zeroize();
 
-    if input_data.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "Input file '{}' is empty. Nothing to process.",
-                input_path.display()
-            ),
-        ));
-    }
-
-    if key.len() < input_data.len() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "Key is shorter than input data. Please provide a key of sufficient length.",
-        ));
-    }
-
-    let mut processed_data = input_data
-        .iter()
-        .zip(key.iter())
-        .map(|(&data_byte, &key_byte)| data_byte ^ key_byte)
-        .collect::<Vec<u8>>();
-
-    let mut output_handle = File::create(&output_path).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!(
-                "Unable to create output file '{}': {}",
-                output_path.display(),
-                e
-            ),
-        )
-    })?;
-    output_handle.write_all(&processed_data).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::WriteZero,
-            format!(
-                "Failed to write to output file '{}': {}",
-                output_path.display(),
-                e
-            ),
-        )
-    })?;
-
-    // Securely zero sensitive data
-    key.zeroize();
-    input_data.zeroize();
-    processed_data.zeroize();
-
-    let input_size = metadata(&input_path).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!(
-                "Unable to read input file metadata '{}': {}",
-                input_path.display(),
-                e
-            ),
-        )
-    })?
-    .len();
-    let output_size = metadata(&output_path).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!(
-                "Unable to read output file metadata '{}': {}",
-                output_path.display(),
-                e
-            ),
-        )
-    })?
-    .len();
-    if input_size != output_size {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Error: Output file size does not match input file size.",
-        ));
-    }
-
-    println!("Operation completed successfully.");
+    println!(
+        "Successfully generated '{}' with size {} bytes.",
+        output_file, size_in_bytes
+    );
 
     Ok(())
 }
